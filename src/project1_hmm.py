@@ -5,6 +5,8 @@ from utility import chunking_seq
 import time
 import os
 import cPickle
+import pandas as pd
+from math import radians, cos, sin, asin, sqrt
 
 def load_data(set_name):
     data_dir = '../data/%s' %(set_name,)
@@ -26,10 +28,43 @@ def load_data(set_name):
             seq_length = cPickle.load(f)
     return data, seq_length
 
-def feature_engineering(data, seq_length):
-    # print data['train']
-    # print seq_length['train']
-    return data, seq_length
+
+def calculate_distance(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great circle distance between two points
+    on the earth (specified in decimal degrees)
+    """
+    # convert decimal degrees to radians
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+    # haversine formula
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a))
+    km = 6367 * c
+    m = km*1000
+    return m
+
+
+
+def feature_engineering(data_dic, seq_length_dic):
+    transportation_modes = ['train', 'car', 'bus', 'walk', 'bike']
+    for mode in transportation_modes:
+        data = data_dic[mode]
+        seq_length = seq_length_dic[mode]
+
+        index = []
+        session = 1
+        for l in seq_length:
+            index += [session] * l
+            session += 1
+
+        df_data = pd.DataFrame(data, columns=['lat', 'lng'])
+        df_data.index = index
+
+        print df_data
+        break
+    return data_dic, seq_length_dic
 
 
 def train_and_validate():
@@ -44,7 +79,7 @@ def train_and_validate():
     # feature engineering
     # you can modify utility module
     # TODO
-    # train_data, train_seq_length = feature_engineering(train_data, train_seq_length)
+    train_data, train_seq_length = feature_engineering(train_data, train_seq_length)
     test_data, test_seq_length = feature_engineering(test_data, test_seq_length)
 
     # learning process
@@ -96,4 +131,6 @@ def test_with_saved_model():
     pass
 
 if __name__ == "__main__":
-    train_and_validate()
+    # train_and_validate()
+    test_data, test_seq_length = load_data(set_name="test")
+    feature_engineering(test_data, test_seq_length)
