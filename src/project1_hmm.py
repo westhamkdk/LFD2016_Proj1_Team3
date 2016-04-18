@@ -80,7 +80,7 @@ def feature_engineering(data_dic, seq_length_dic):
         df_data['velocity_delta'] = df_data['velocity-1'] - df_data['velocity']
         df_data['acc'] = df_data['velocity_delta'] / df_data['time_delta']
 
-        print df_data
+        # print df_data
 
         ## change dataframe to dic
         session = 1
@@ -89,6 +89,10 @@ def feature_engineering(data_dic, seq_length_dic):
         for l in seq_length:
             ## remove last two rows per index(session)
             try:
+                if int(l)-2 <= 0:
+                    session += 1
+                    continue
+
                 data_list +=(df_data[['velocity','acc']].loc[session].as_matrix()[:-2,:].tolist())
                 seq_list.append(int(l)-2)
             except IndexError:
@@ -114,8 +118,19 @@ def train_and_validate():
     # feature engineering
     # you can modify utility module
     # TODO
+
     train_data, train_seq_length = feature_engineering(train_data, train_seq_length)
     test_data, test_seq_length = feature_engineering(test_data, test_seq_length)
+    # test_data, test_seq_length = train_data, train_seq_length
+
+    for mode in ['train', 'car', 'bus', 'walk', 'bike']:
+        print "mode : %s"%mode
+        print len(train_data[mode])
+        print sum(test_seq_length[mode])
+        for l in train_seq_length[mode]:
+           if l == 0:
+               print "length 0 is found"
+
 
     print("--- features are made : %s seconds ---" % (time.time() - start_time2))
     start_time2_5 = time.time()
