@@ -6,57 +6,37 @@ import time
 import os
 import cPickle
 
-def load_train_data():
-    train_dir = '../data/train'
-    data_file_path = train_dir+'/train.pkl'
-    seq_file_path = train_dir+'/train_seq.pkl'
+def load_data(set_name):
+    data_dir = '../data/%s' %(set_name,)
+    data_file_path = data_dir+'/%s.pkl'%(set_name,)
+    seq_file_path = data_dir+'/%s_seq.pkl'%(set_name,)
 
     if not os.path.isfile(data_file_path):
-        print "train pickle isn't exist"
-        train_data, train_seq_length = chunking_seq(train_dir)
+        print "%s data pickle isn't exist... wait" %(set_name,)
+        data, seq_length = chunking_seq(data_dir)
         with open(data_file_path, 'wb+') as f:
-            cPickle.dump(train_data, f)
+            cPickle.dump(data, f)
         with open(seq_file_path, 'wb+') as f:
-            cPickle.dump(train_seq_length, f)
+            cPickle.dump(seq_length, f)
     else:
-        print "train pickle exist"
+        print "%s data pickle exist" %(set_name,)
         with open(data_file_path, 'rb')as f:
-            train_data = cPickle.load(f)
+            data = cPickle.load(f)
         with open(seq_file_path, 'rb') as f:
-            train_seq_length = cPickle.load(f)
-    return train_data, train_seq_length
+            seq_length = cPickle.load(f)
+    return data, seq_length
 
-# def load_test_data():
-#      test_dir = '../data/test'
-#      test_data, test_seq_length = chunking_seq(test_dir)
-#      return test_data, test_seq_length
-
-def load_test_data():
-    test_dir = '../data/test'
-    data_file_path = test_dir+'/test.pkl'
-    seq_file_path = test_dir+'/train_seq.pkl'
-
-    if not os.path.isfile(data_file_path):
-        print "test pickle isn't exist"
-        test_data, test_seq_length = chunking_seq(test_dir)
-        with open(data_file_path, 'wb+') as f:
-            cPickle.dump(test_data, f)
-        with open(seq_file_path, 'wb+') as f:
-            cPickle.dump(test_seq_length, f)
-    else:
-        print "test pickle exist"
-        with open(data_file_path, 'rb')as f:
-            test_data = cPickle.load(f)
-        with open(seq_file_path, 'rb') as f:
-            test_seq_length = cPickle.load(f)
-    return test_data, test_seq_length
+def feature_engineering(data, seq_length):
+    # print data['train']
+    # print seq_length['train']
+    return data, seq_length
 
 
 def train_and_validate():
     start_time = time.time()
 
-    train_data, train_seq_length = load_train_data()
-    test_data, test_seq_length = load_test_data()
+    train_data, train_seq_length = load_data(set_name="train")
+    test_data, test_seq_length = load_data(set_name="test")
 
     print("--- data is loaded : %s seconds ---" % (time.time() - start_time))
     start_time2 = time.time()
@@ -64,6 +44,8 @@ def train_and_validate():
     # feature engineering
     # you can modify utility module
     # TODO
+    # train_data, train_seq_length = feature_engineering(train_data, train_seq_length)
+    test_data, test_seq_length = feature_engineering(test_data, test_seq_length)
 
     # learning process
     # TODO
