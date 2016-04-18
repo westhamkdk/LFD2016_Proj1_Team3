@@ -51,7 +51,7 @@ def chunking_seq(basedir):
                         continue
 
                     # FIXME: select variable and feature engineering
-                    sequence = sequence.as_matrix(['lat', 'lng'])
+                    sequence = sequence.as_matrix(['lat', 'lng', 'datetime'])
                     # TODO: feature engineering
 
 

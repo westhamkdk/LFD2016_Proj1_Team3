@@ -1,3 +1,4 @@
+import datetime
 import numpy as np
 from hmmlearn import hmm
 from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
@@ -28,7 +29,6 @@ def load_data(set_name):
             seq_length = cPickle.load(f)
     return data, seq_length
 
-
 def calculate_distance(lon1, lat1, lon2, lat2):
     """
     Calculate the great circle distance between two points
@@ -46,10 +46,13 @@ def calculate_distance(lon1, lat1, lon2, lat2):
     return m
 
 
-
 def feature_engineering(data_dic, seq_length_dic):
+    new_data_dic = {}
+    new_seq_length_dic = {}
+
     transportation_modes = ['train', 'car', 'bus', 'walk', 'bike']
     for mode in transportation_modes:
+        print "feature_engineering... transportation_modes mode : %s" %mode
         data = data_dic[mode]
         seq_length = seq_length_dic[mode]
 
@@ -59,12 +62,44 @@ def feature_engineering(data_dic, seq_length_dic):
             index += [session] * l
             session += 1
 
-        df_data = pd.DataFrame(data, columns=['lat', 'lng'])
+        df_data = pd.DataFrame(data, columns=['lat', 'lng', 'datetime'])
         df_data.index = index
+        df_data['unixtime'] = [time.mktime(d.to_pydatetime().timetuple()) for d in df_data['datetime']]
+
+        df_data['lat-1'] = df_data['lat'].shift(-1)
+        df_data['lng-1'] = df_data['lng'].shift(-1)
+        df_data['unixtime-1'] = df_data['unixtime'].shift(-1)
+
+        ## calucate distance, time_delta and velocity
+        df_data['distance'] = [calculate_distance(d[1]['lng'], d[1]['lat'], d[1]['lng-1'], d[1]['lat-1'])for d in df_data.iterrows()]
+        df_data['time_delta'] = df_data['unixtime-1'] - df_data['unixtime']
+        df_data['velocity'] = df_data['distance'] / df_data['time_delta']  ## m/s
+
+        ## calculate accelerometer
+        df_data['velocity-1'] = df_data['velocity'].shift(-1)
+        df_data['velocity_delta'] = df_data['velocity-1'] - df_data['velocity']
+        df_data['acc'] = df_data['velocity_delta'] / df_data['time_delta']
 
         print df_data
-        break
-    return data_dic, seq_length_dic
+
+        ## change dataframe to dic
+        session = 1
+        data_list = []
+        seq_list = []
+        for l in seq_length:
+            ## remove last two rows per index(session)
+            try:
+                data_list +=(df_data[['velocity','acc']].loc[session].as_matrix()[:-2,:].tolist())
+                seq_list.append(int(l)-2)
+            except IndexError:
+                pass
+
+            session += 1
+
+        new_data_dic[mode] = data_list
+        new_seq_length_dic[mode] = seq_list
+
+    return new_data_dic, new_seq_length_dic
 
 
 def train_and_validate():
@@ -82,15 +117,23 @@ def train_and_validate():
     train_data, train_seq_length = feature_engineering(train_data, train_seq_length)
     test_data, test_seq_length = feature_engineering(test_data, test_seq_length)
 
+    print("--- features are made : %s seconds ---" % (time.time() - start_time2))
+    start_time2_5 = time.time()
+
     # learning process
     # TODO
+    print 'train'
     model_train = hmm.GaussianHMM(n_components=5, n_iter=20).fit(train_data['train'], train_seq_length['train'])
+    print 'car'
     model_car = hmm.GaussianHMM(n_components=5, n_iter=20).fit(train_data['car'], train_seq_length['car'])
+    print 'bus'
     model_bus = hmm.GaussianHMM(n_components=5, n_iter=20).fit(train_data['bus'], train_seq_length['bus'])
+    print 'walk'
     model_walk = hmm.GaussianHMM(n_components=5, n_iter=20).fit(train_data['walk'], train_seq_length['walk'])
+    print 'bike'
     model_bike = hmm.GaussianHMM(n_components=5, n_iter=20).fit(train_data['bike'], train_seq_length['bike'])
 
-    print("--- model is trained : %s seconds ---" % (time.time() - start_time2))
+    print("--- model is trained : %s seconds ---" % (time.time() - start_time2_5))
     start_time3 = time.time()
 
     # test process
@@ -131,6 +174,6 @@ def test_with_saved_model():
     pass
 
 if __name__ == "__main__":
-    # train_and_validate()
-    test_data, test_seq_length = load_data(set_name="test")
-    feature_engineering(test_data, test_seq_length)
+    train_and_validate()
+    # test_data, test_seq_length = load_data(set_name="test")
+    # feature_engineering(test_data, test_seq_length)
