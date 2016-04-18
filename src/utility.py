@@ -50,6 +50,8 @@ def chunking_seq(basedir):
                     if sequence.shape[0] == 0:
                         continue
 
+
+                    sequence = sequence.drop_duplicates(['datetime'])
                     # FIXME: select variable and feature engineering
                     sequence = sequence.as_matrix(['lat', 'lng', 'datetime'])
                     # TODO: feature engineering

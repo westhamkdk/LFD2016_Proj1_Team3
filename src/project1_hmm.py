@@ -46,65 +46,97 @@ def calculate_distance(lon1, lat1, lon2, lat2):
     return m
 
 
-def feature_engineering(data_dic, seq_length_dic):
-    new_data_dic = {}
-    new_seq_length_dic = {}
+def feature_engineering(data_dic, seq_length_dic, set_name):
+    data_dir = '../data/%s' %(set_name,)
+    data_file_path = data_dir+'/%s_feature.pkl'%(set_name,)
+    seq_file_path = data_dir+'/%s_seq_feature.pkl'%(set_name,)
+    if not os.path.isfile(data_file_path):
+        print "%s feature pickle isn't exist... wait" %(set_name,)
 
-    transportation_modes = ['train', 'car', 'bus', 'walk', 'bike']
-    for mode in transportation_modes:
-        print "feature_engineering... transportation_modes mode : %s" %mode
-        data = data_dic[mode]
-        seq_length = seq_length_dic[mode]
+        new_data_dic = {}
+        new_seq_length_dic = {}
 
-        index = []
-        session = 1
-        for l in seq_length:
-            index += [session] * l
-            session += 1
+        transportation_modes = ['train', 'car', 'bus', 'walk', 'bike']
+        for mode in transportation_modes:
+            print "feature_engineering... transportation_modes mode : %s" %mode
+            data = data_dic[mode]
+            seq_length = seq_length_dic[mode]
 
-        df_data = pd.DataFrame(data, columns=['lat', 'lng', 'datetime'])
-        df_data.index = index
-        df_data['unixtime'] = [time.mktime(d.to_pydatetime().timetuple()) for d in df_data['datetime']]
+            index = []
+            session = 1
+            for l in seq_length:
+                index += [session] * l
+                session += 1
 
-        df_data['lat-1'] = df_data['lat'].shift(-1)
-        df_data['lng-1'] = df_data['lng'].shift(-1)
-        df_data['unixtime-1'] = df_data['unixtime'].shift(-1)
+            df_data = pd.DataFrame(data, columns=['lat', 'lng', 'datetime'])
+            df_data.index = index
+            df_data['unixtime'] = [time.mktime(d.to_pydatetime().timetuple()) for d in df_data['datetime']]
 
-        ## calucate distance, time_delta and velocity
-        df_data['distance'] = [calculate_distance(d[1]['lng'], d[1]['lat'], d[1]['lng-1'], d[1]['lat-1'])for d in df_data.iterrows()]
-        df_data['time_delta'] = df_data['unixtime-1'] - df_data['unixtime']
-        df_data['velocity'] = df_data['distance'] / df_data['time_delta']  ## m/s
+            df_data['lat-1'] = df_data['lat'].shift(-1)
+            df_data['lng-1'] = df_data['lng'].shift(-1)
+            df_data['unixtime-1'] = df_data['unixtime'].shift(-1)
 
-        ## calculate accelerometer
-        df_data['velocity-1'] = df_data['velocity'].shift(-1)
-        df_data['velocity_delta'] = df_data['velocity-1'] - df_data['velocity']
-        df_data['acc'] = df_data['velocity_delta'] / df_data['time_delta']
+            ## calucate distance, time_delta and velocity
+            df_data['distance'] = [calculate_distance(d[1]['lng'], d[1]['lat'], d[1]['lng-1'], d[1]['lat-1'])for d in df_data.iterrows()]
+            df_data['time_delta'] = df_data['unixtime-1'] - df_data['unixtime']
+            df_data['velocity'] = df_data['distance'] / df_data['time_delta']  ## m/s
 
-        # print df_data
+            ## calculate accelerometer
+            df_data['velocity-1'] = df_data['velocity'].shift(-1)
+            df_data['velocity_delta'] = df_data['velocity-1'] - df_data['velocity']
+            df_data['acc'] = df_data['velocity_delta'] / df_data['time_delta']
 
-        ## change dataframe to dic
-        session = 1
-        data_list = []
-        seq_list = []
-        for l in seq_length:
-            ## remove last two rows per index(session)
-            try:
-                if int(l)-2 <= 0:
-                    session += 1
-                    continue
+            # print df_data
 
-                data_list +=(df_data[['velocity','acc']].loc[session].as_matrix()[:-2,:].tolist())
-                seq_list.append(int(l)-2)
-            except IndexError:
-                pass
+            ## change dataframe to dic
+            session = 1
+            data_list = []
+            seq_list = []
+            for l in seq_length:
+                ## remove last two rows per index(session)
+                try:
+                    feature_set = ['velocity','acc']
+                    df_features = df_data[feature_set]
+                    df_feature_by_session = df_features.loc[session]
+                    dropped_df = df_feature_by_session.replace([np.inf, -np.inf], np.nan).dropna(how="any")
+                    removed_length = dropped_df.shape[0]
+                    # print removed_length
+                    if removed_length-2 <= 0:
+                        session += 1
+                        continue
 
-            session += 1
+                    data_list += dropped_df.as_matrix()[:-2,:].tolist()
+                    seq_list.append(removed_length-2)
+                except IndexError:
+                    pass
 
-        new_data_dic[mode] = data_list
-        new_seq_length_dic[mode] = seq_list
+                session += 1
+
+            new_data_dic[mode] = data_list
+            new_seq_length_dic[mode] = seq_list
+
+            # # debugging
+            # print len(data_list)
+            # print sum(seq_list)
+            # for l in seq_list:
+            #    if l == 0:
+            #        print "length 0 is found"
+
+        ## save features to pickle
+        with open(data_file_path, 'wb+') as f:
+            cPickle.dump(new_data_dic, f)
+        with open(seq_file_path, 'wb+') as f:
+            cPickle.dump(new_seq_length_dic, f)
+
+    else:
+        ## load features from pickle file
+        print "%s feature pickle exist" %(set_name,)
+        with open(data_file_path, 'rb')as f:
+            new_data_dic = cPickle.load(f)
+        with open(seq_file_path, 'rb') as f:
+            new_seq_length_dic = cPickle.load(f)
 
     return new_data_dic, new_seq_length_dic
-
 
 def train_and_validate():
     start_time = time.time()
@@ -118,19 +150,8 @@ def train_and_validate():
     # feature engineering
     # you can modify utility module
     # TODO
-
-    train_data, train_seq_length = feature_engineering(train_data, train_seq_length)
-    test_data, test_seq_length = feature_engineering(test_data, test_seq_length)
-    # test_data, test_seq_length = train_data, train_seq_length
-
-    for mode in ['train', 'car', 'bus', 'walk', 'bike']:
-        print "mode : %s"%mode
-        print len(train_data[mode])
-        print sum(test_seq_length[mode])
-        for l in train_seq_length[mode]:
-           if l == 0:
-               print "length 0 is found"
-
+    train_data, train_seq_length = feature_engineering(train_data, train_seq_length, "train")
+    test_data, test_seq_length = feature_engineering(test_data, test_seq_length, "test")
 
     print("--- features are made : %s seconds ---" % (time.time() - start_time2))
     start_time2_5 = time.time()
@@ -138,15 +159,15 @@ def train_and_validate():
     # learning process
     # TODO
     print 'train'
-    model_train = hmm.GaussianHMM(n_components=5, n_iter=20).fit(train_data['train'], train_seq_length['train'])
+    model_train = hmm.GaussianHMM(n_components=4, n_iter=40).fit(train_data['train'], train_seq_length['train'])
     print 'car'
-    model_car = hmm.GaussianHMM(n_components=5, n_iter=20).fit(train_data['car'], train_seq_length['car'])
+    model_car = hmm.GaussianHMM(n_components=4, n_iter=40).fit(train_data['car'], train_seq_length['car'])
     print 'bus'
-    model_bus = hmm.GaussianHMM(n_components=5, n_iter=20).fit(train_data['bus'], train_seq_length['bus'])
+    model_bus = hmm.GaussianHMM(n_components=4, n_iter=40).fit(train_data['bus'], train_seq_length['bus'])
     print 'walk'
-    model_walk = hmm.GaussianHMM(n_components=5, n_iter=20).fit(train_data['walk'], train_seq_length['walk'])
+    model_walk = hmm.GaussianHMM(n_components=4, n_iter=40).fit(train_data['walk'], train_seq_length['walk'])
     print 'bike'
-    model_bike = hmm.GaussianHMM(n_components=5, n_iter=20).fit(train_data['bike'], train_seq_length['bike'])
+    model_bike = hmm.GaussianHMM(n_components=4, n_iter=40).fit(train_data['bike'], train_seq_length['bike'])
 
     print("--- model is trained : %s seconds ---" % (time.time() - start_time2_5))
     start_time3 = time.time()
@@ -190,5 +211,3 @@ def test_with_saved_model():
 
 if __name__ == "__main__":
     train_and_validate()
-    # test_data, test_seq_length = load_data(set_name="test")
-    # feature_engineering(test_data, test_seq_length)
