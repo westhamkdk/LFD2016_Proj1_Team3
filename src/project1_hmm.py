@@ -10,19 +10,19 @@ import pandas as pd
 from math import radians, cos, sin, asin, sqrt
 
 def load_data(set_name):
-    data_dir = '../data/%s' %(set_name,)
-    data_file_path = data_dir+'/%s.pkl'%(set_name,)
-    seq_file_path = data_dir+'/%s_seq.pkl'%(set_name,)
+    data_dir = '../data/%s' % (set_name,)
+    data_file_path = data_dir+'/%s.pkl' % (set_name,)
+    seq_file_path = data_dir+'/%s_seq.pkl' % (set_name,)
 
     if not os.path.isfile(data_file_path):
-        print "%s data pickle isn't exist... wait" %(set_name,)
+        print "%s data pickle isn't exist... wait" % (set_name,)
         data, seq_length = chunking_seq(data_dir)
         with open(data_file_path, 'wb+') as f:
             cPickle.dump(data, f)
         with open(seq_file_path, 'wb+') as f:
             cPickle.dump(seq_length, f)
     else:
-        print "%s data pickle exist" %(set_name,)
+        print "%s data pickle exist" % (set_name,)
         with open(data_file_path, 'rb')as f:
             data = cPickle.load(f)
         with open(seq_file_path, 'rb') as f:
@@ -45,20 +45,19 @@ def calculate_distance(lon1, lat1, lon2, lat2):
     m = km*1000
     return m
 
-
 def feature_engineering(data_dic, seq_length_dic, set_name):
     data_dir = '../data/%s' %(set_name,)
-    data_file_path = data_dir+'/%s_feature.pkl'%(set_name,)
-    seq_file_path = data_dir+'/%s_seq_feature.pkl'%(set_name,)
+    data_file_path = data_dir+'/%s_feature.pkl' % (set_name,)
+    seq_file_path = data_dir+'/%s_seq_feature.pkl' % (set_name,)
     if not os.path.isfile(data_file_path):
-        print "%s feature pickle isn't exist... wait" %(set_name,)
+        print "%s feature pickle isn't exist... wait" % (set_name,)
 
         new_data_dic = {}
         new_seq_length_dic = {}
 
         transportation_modes = ['train', 'car', 'bus', 'walk', 'bike']
         for mode in transportation_modes:
-            print "feature_engineering... transportation_modes mode : %s" %mode
+            print "feature_engineering... transportation_modes mode : %s" % mode
             data = data_dic[mode]
             seq_length = seq_length_dic[mode]
 
@@ -68,7 +67,7 @@ def feature_engineering(data_dic, seq_length_dic, set_name):
                 index += [session] * l
                 session += 1
 
-            df_data = pd.DataFrame(data, columns=['lat', 'lng', 'datetime'])
+            df_data = pd.DataFrame(data, columns=['lat', 'lng', 'datetime', 'alt'])
             df_data.index = index
             df_data['unixtime'] = [time.mktime(d.to_pydatetime().timetuple()) for d in df_data['datetime']]
 
@@ -76,26 +75,33 @@ def feature_engineering(data_dic, seq_length_dic, set_name):
             df_data['lng-1'] = df_data['lng'].shift(-1)
             df_data['unixtime-1'] = df_data['unixtime'].shift(-1)
 
-            ## calucate distance, time_delta and velocity
+            # calucate distance, time_delta and velocity
             df_data['distance'] = [calculate_distance(d[1]['lng'], d[1]['lat'], d[1]['lng-1'], d[1]['lat-1'])for d in df_data.iterrows()]
             df_data['time_delta'] = df_data['unixtime-1'] - df_data['unixtime']
-            df_data['velocity'] = df_data['distance'] / df_data['time_delta']  ## m/s
+            df_data['velocity'] = df_data['distance'] / df_data['time_delta']  # m/s
 
-            ## calculate accelerometer
+            # calculate accelerometer
             df_data['velocity-1'] = df_data['velocity'].shift(-1)
             df_data['velocity_delta'] = df_data['velocity-1'] - df_data['velocity']
             df_data['acc'] = df_data['velocity_delta'] / df_data['time_delta']
 
+            # weekend
+            df_data['weekdays'] = [10 if d.weekday() > 4 else 1 for d in df_data['datetime']]
+
+            # rushhour
+            df_data['rushhour'] = [10 if (d.time().hour > 6 and d.time().hour < 10) or (d.time().hour > 16 and d.time().hour < 20) else 1 for d in df_data['datetime']]
+            # df_data['hours'] = [d.time().hour  for d in df_data['datetime']]
+
             # print df_data
 
-            ## change dataframe to dic
+            # change dataframe to dic
             session = 1
             data_list = []
             seq_list = []
             for l in seq_length:
-                ## remove last two rows per index(session)
+                # remove last two rows per index(session)
                 try:
-                    feature_set = ['velocity','acc']
+                    feature_set = ['velocity', 'acc', 'weekdays', 'rushhour']
                     df_features = df_data[feature_set]
                     df_feature_by_session = df_features.loc[session]
                     dropped_df = df_feature_by_session.replace([np.inf, -np.inf], np.nan).dropna(how="any")
@@ -105,7 +111,7 @@ def feature_engineering(data_dic, seq_length_dic, set_name):
                         session += 1
                         continue
 
-                    data_list += dropped_df.as_matrix()[:-2,:].tolist()
+                    data_list += dropped_df.as_matrix()[:-2, :].tolist()
                     seq_list.append(removed_length-2)
                 except IndexError:
                     pass
@@ -122,15 +128,15 @@ def feature_engineering(data_dic, seq_length_dic, set_name):
             #    if l == 0:
             #        print "length 0 is found"
 
-        ## save features to pickle
+        # save features to pickle
         with open(data_file_path, 'wb+') as f:
             cPickle.dump(new_data_dic, f)
         with open(seq_file_path, 'wb+') as f:
             cPickle.dump(new_seq_length_dic, f)
 
     else:
-        ## load features from pickle file
-        print "%s feature pickle exist" %(set_name,)
+        # load features from pickle file
+        print "%s feature pickle exist" % (set_name,)
         with open(data_file_path, 'rb')as f:
             new_data_dic = cPickle.load(f)
         with open(seq_file_path, 'rb') as f:
@@ -159,15 +165,15 @@ def train_and_validate():
     # learning process
     # TODO
     print 'train'
-    model_train = hmm.GaussianHMM(n_components=4, n_iter=40).fit(train_data['train'], train_seq_length['train'])
+    model_train = hmm.GaussianHMM(n_components=20, covariance_type='diag', algorithm='viterbi', n_iter=20).fit(train_data['train'], train_seq_length['train'])
     print 'car'
-    model_car = hmm.GaussianHMM(n_components=4, n_iter=40).fit(train_data['car'], train_seq_length['car'])
+    model_car = hmm.GaussianHMM(n_components=20, covariance_type='diag', algorithm='viterbi', n_iter=20).fit(train_data['car'], train_seq_length['car'])
     print 'bus'
-    model_bus = hmm.GaussianHMM(n_components=4, n_iter=40).fit(train_data['bus'], train_seq_length['bus'])
+    model_bus = hmm.GaussianHMM(n_components=20, covariance_type='diag', algorithm='viterbi', n_iter=20).fit(train_data['bus'], train_seq_length['bus'])
     print 'walk'
-    model_walk = hmm.GaussianHMM(n_components=4, n_iter=40).fit(train_data['walk'], train_seq_length['walk'])
+    model_walk = hmm.GaussianHMM(n_components=20, covariance_type='diag', algorithm='viterbi', n_iter=20).fit(train_data['walk'], train_seq_length['walk'])
     print 'bike'
-    model_bike = hmm.GaussianHMM(n_components=4, n_iter=40).fit(train_data['bike'], train_seq_length['bike'])
+    model_bike = hmm.GaussianHMM(n_components=20, covariance_type='diag', algorithm='viterbi', n_iter=20).fit(train_data['bike'], train_seq_length['bike'])
 
     print("--- model is trained : %s seconds ---" % (time.time() - start_time2_5))
     start_time3 = time.time()
@@ -198,7 +204,7 @@ def train_and_validate():
 
     print "confusion_matrix : ", confusion_matrix(actual, predict)
     print "f1_score : ", f1_score(actual, predict, average=None)
-    print "predicison : ", precision_score(actual, predict, average=None)
+    print "precision : ", precision_score(actual, predict, average=None)
     print "recall : ", recall_score(actual, predict, average=None)
     print "macro f1_score : ", f1_score(actual, predict, average='macro')
 
